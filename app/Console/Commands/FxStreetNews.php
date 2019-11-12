@@ -49,10 +49,8 @@ class FxStreetNews extends Command
      * Execute the console command.
      *
      * @param News $news
-     *
-     * @return mixed
      */
-    public function handle(News $news): bool
+    public function handle(News $news): void
     {
         //Получить заголовки новостей
         $this->getNewsTitles();
@@ -60,13 +58,11 @@ class FxStreetNews extends Command
         //Удалить записи с существующими BusinessId
         echo 'Deleted: ' . $this->excludeDuplicates($news) . PHP_EOL;
 
-        if ($this->newsList->isEmpty()) return false;
+        if ($this->newsList->isEmpty()) return;
 
         $this->addNews($news);
 
         $news->whereIn('business_id', $this->newsList->pluck('BusinessId'))->searchable();
-
-        return true;
     }
 
 //    private function addNewsBodies(News $news)
@@ -87,74 +83,6 @@ class FxStreetNews extends Command
 //            \DB::rollback();
 //        }
 //    }
-
-    /**
-     * Добавить новости
-     *
-     * @param News $news
-     */
-    private function addNews(News $news): void
-    {
-        $newsInsert = $this->newsList->map(function ($item) {
-            return [
-                'business_id'  => $item['BusinessId'],
-                'image'        => $item['ImageUrl'],
-                'title'        => $item['Title'],
-                'body'         => $this->getNewsBody($item['FullUrl']),
-                'full_url'     => $item['FullUrl'],
-                'tags'         => json_encode($this->getTags($item['Tags'])),
-                'published_at' => Carbon::createFromTimestamp($item['PublicationTime'])->format('Y-m-d H:i:s'),
-            ];
-        });
-
-        $news->insert($newsInsert->reverse()->toArray());
-    }
-
-    /**
-     * Выбрать валюты в тэгах
-     *
-     * @param array $tags
-     *
-     * @return array
-     */
-    private function getTags(array $tags): array
-    {
-        $tags = array_map(function ($item) {
-            return preg_match('/^[A-Z]{6}$/', $item) ? $item : null;
-        }, $tags);
-
-        $tags = array_filter($tags, function ($item) {
-            return $item;
-        });
-
-        return array_values($tags);
-    }
-
-    /**
-     * Удалить записи с существующими BusinessId
-     *
-     * @param News $news
-     *
-     * @return int
-     */
-    private function excludeDuplicates(News $news): int
-    {
-        //Текущий размер коллекции
-        $count = $this->newsList->count();
-
-        //Получить записи в БД, по BusinessId (если есть)
-        $businessIds = $news->whereIn('business_id', $this->newsList->pluck('BusinessId'))->get('business_id')->pluck('business_id');
-
-        //Удалить записи с повторяющимися BusinessId
-        if ($businessIds->isNotEmpty()) {
-            $this->newsList = $this->newsList->filter(function ($value) use ($businessIds) {
-                return !$businessIds->contains($value['BusinessId']);
-            });
-        }
-
-        //Вернуть кол-во удаленных записей
-        return $count - $this->newsList->count();
-    }
 
     /**
      * Получить заголовки новостей
@@ -188,8 +116,83 @@ class FxStreetNews extends Command
             $response = json_decode($response, true);
             $this->newsList = collect($response['results'][0]['hits']);
         } catch (RequestException $e) {
-//            \Log::channel('sentrylog')->error($e->getMessage());
+            \Log::channel('command_twitter')->error([
+                'action'  => __METHOD__,
+                'code'    => $e->getCode(),
+                'message' => $e->getMessage(),
+            ]);
+            exit(1);
         }
+    }
+
+    /**
+     * Удалить записи с существующими BusinessId
+     *
+     * @param News $news
+     *
+     * @return int
+     */
+    private function excludeDuplicates(News $news): int
+    {
+        //Текущий размер коллекции
+        $count = $this->newsList->count();
+
+        /** @var Collection $businessIds Получить записи в БД, по BusinessId (если есть) */
+        $businessIds = $news->whereIn('business_id', $this->newsList->pluck('BusinessId'))->get('business_id')->pluck('business_id');
+
+        //Удалить записи с повторяющимися BusinessId
+        if ($businessIds->isNotEmpty()) {
+            $this->newsList = $this->newsList->filter(function ($value) use ($businessIds) {
+                return !$businessIds->contains($value['BusinessId']);
+            });
+        }
+
+        //Вернуть кол-во удаленных записей
+        return $count - $this->newsList->count();
+    }
+
+    /**
+     * Добавить новости
+     *
+     * @param News $news
+     */
+    private function addNews(News $news): void
+    {
+        $newsInsert = $this->newsList->map(function ($item) {
+            return [
+                'business_id'  => $item['BusinessId'],
+                'image'        => $item['ImageUrl'],
+                'title'        => $item['Title'],
+                'body'         => $this->getNewsBody($item['FullUrl']),
+                'full_url'     => $item['FullUrl'],
+                'tags'         => json_encode($this->getTags($item['Tags'])),
+                'published_at' => Carbon::createFromTimestamp($item['PublicationTime'], date_default_timezone_get())
+                    ->setTimezone('UTC')
+                    ->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        $news->insert($newsInsert->reverse()->toArray());
+    }
+
+    /**
+     * Выбрать валюты в тэгах
+     *
+     * @param array $tags
+     *
+     * @return array
+     */
+    private function getTags(array $tags): array
+    {
+        $tags = array_map(function ($item) {
+            return preg_match('/^[A-Z]{6}$/', $item) ? $item : null;
+        }, $tags);
+
+        $tags = array_filter($tags, function ($item) {
+            return $item;
+        });
+
+        return array_values($tags);
     }
 
     /**
@@ -202,13 +205,12 @@ class FxStreetNews extends Command
     private function getNewsBody(string $url): ?string
     {
         $newsBodyDocument = new Document($url, true);
-        if ($newsBodyDocument->count('#fxs_article_content') > 0) {
-            $html = $newsBodyDocument->first('#fxs_article_content')->html();
 
-            //Вырезать рекламу
-            return preg_replace('|<iframe.+</iframe>|', '', $html);
-        }
+        if ($newsBodyDocument->count('#fxs_article_content') === 0) return null;
 
-        return null;
+        $html = $newsBodyDocument->first('#fxs_article_content')->html();
+
+        //Вырезать рекламу
+        return preg_replace('/<iframe.+<\/iframe>/', '', $html);
     }
 }

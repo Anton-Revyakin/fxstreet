@@ -18,7 +18,7 @@ class CreateNewsTable extends Migration
             $table->string('business_id', 100)->unique();
             $table->string('image', 255);
             $table->string('title', 1000);
-            $table->text('body')->nullable();
+            $table->text('body');
             $table->string('full_url', 1000);
             $table->json('tags')->nullable();
             $table->dateTime('published_at');

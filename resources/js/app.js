@@ -43,8 +43,8 @@ import {OverlayScrollbarsComponent} from 'overlayscrollbars-vue';
 import VueJSModal from 'vue-js-modal';
 
 //CUSTOM COMPONENTS
-import News from './components/News/Index';
-import Twitter from './components/Twitter/Index';
+import News from './components/News/NewsIndex';
+import Twitter from './components/Twitter/TwitterIndex';
 
 /**
  * Next, we will create a fresh Vue application instance and attach it to
@@ -60,8 +60,8 @@ Vue.use(VueJSModal, {dialog: true});
 
 const routes = [
     {path: '/', redirect: '/news'},
-    {path: '/news', component: News, meta: {title: 'Новости'}},
-    {path: '/twitter', component: Twitter, meta: {title: 'Twitter'}},
+    {name: 'news', path: '/news/:id?', component: News, meta: {title: 'Новости'}},
+    {name: 'twitter', path: '/twitter/:id?', component: Twitter, meta: {title: 'Twitter'}},
 ];
 
 const router = new VueRouter({

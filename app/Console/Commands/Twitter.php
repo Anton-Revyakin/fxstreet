@@ -2,15 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Tweets;
 use DiDom\Document;
-use DiDom\Element;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use PHPUnit\ExampleExtension\Comparable;
-use SebastianBergmann\CodeCoverage\Report\PHP;
+use Illuminate\Support\Facades\Log;
 
 class Twitter extends Command
 {
@@ -50,19 +49,31 @@ class Twitter extends Command
     /**
      * Execute the console command.
      *
-     * @return mixed
+     * @param Tweets $tweets
      */
-    public function handle()
+    public function handle(Tweets $tweets): void
     {
-        return $this->getTweetIds();
+        $this->getTweets();
+
+        dump($this->tweets);
+
+        //Удалить записи с существующими BusinessId
+        echo 'Deleted: ' . $this->excludeDuplicates($tweets) . PHP_EOL;
+
+        if ($this->tweets->isEmpty()) exit(0);
+
+        $this->addTweets($tweets);
     }
 
-    private function getTweetIds($tweetId = '1186671140762247168')
+    /**
+     * Получить твиты
+     */
+    private function getTweets(): void
     {
         try {
             $tweets = (new Client())->request(
                 'GET',
-                'https://twitter.com/i/profiles/show/realDonaldTrump/timeline/tweets?composed_count=0&include_available_features=1&include_entities=1&include_new_items_bar=true&interval=30000&latent_count=0&min_position=1189614078534311936',
+                'https://twitter.com/i/profiles/show/realDonaldTrump/timeline/tweets?composed_count=0&include_available_features=1&include_entities=1&include_new_items_bar=true&interval=30000&latent_count=0',
                 [
                     'headers' => [
                         'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.120 Safari/537.36',
@@ -70,40 +81,42 @@ class Twitter extends Command
                 ]
             );
 
+            //Распаковать json
             $tweets = json_decode($tweets->getBody()->getContents(), true);
 
-            \Log::channel('command_twitter')->info($tweets);
+//            Log::channel('command_twitter')->info($tweets);
 
+            //Получить список твитов
             $tweets = new Document($tweets['items_html']);
             $tweets = $tweets->find('.js-stream-item');
 
             if (count($tweets) > 0) {
                 $data = [];
                 foreach ($tweets as $index => $tweet) {
-                    echo $index . PHP_EOL;
+                    //id твита
                     $data[$index]['id'] = $tweet->getAttribute('data-item-id');
-
+                    //Ссылка на твит
+                    $data[$index]['full_url'] = $tweet->first('small.time a')->getAttribute('href');
+                    //Аватар
+                    $data[$index]['image'] = $tweet->first('img.avatar')->getAttribute('src');
+                    //Дата публикации
+                    $data[$index]['published'] = $tweet->first('small.time a span')->getAttribute('data-time');
+                    //Твит
                     $data[$index]['tweet'] = preg_replace(
                         [
-                            '/<(a|span) .+invisible.+<\/(a|span)>/', //Убрать неотображаемые ссылки
-                            '/<a href="([^"]+)"[^>]+>/',             //Очистить ссылки от лишних аттрибутов
-                            '/<a href="\/([^"]+")/',                 //Поправить ссылки на твиттер
-                            '/<s>@<\/s><b>/',                        //Поправить собачки в ссылках на аккаунты
-                            '/ {2,}/',                               //Убрать лишние пробелы
-                            '/\n/',                                  //Переносы строк
+                            '/(.+)pic\.twitter\.com.+/',
+                            '/…/',
+                            '/https/',
                         ],
                         [
+                            '$1',
                             '',
-                            ' <a href="$1" target="_blank">',
-                            ' <a href="https://twitter.com$1">',
-                            '<b>@',
-                            ' ',
-                            '<br/>',
+                            '<br/>https',
                         ],
-                        $tweet->first('.js-tweet-text-container p'
-                        )->innerHtml());
-                    \Storage::append('twitter.html', $data[$index]['tweet'] . '<hr/>');
+                        $tweet->first('.js-tweet-text-container p')->text());
                 }
+
+                $this->tweets = collect($data);
             }
         } catch (GuzzleException $e) {
             \Log::channel('command_twitter')->error([
@@ -113,21 +126,53 @@ class Twitter extends Command
             ]);
             exit(1);
         }
+    }
 
-        exit(0);
+    /**
+     * Удалить записи с существующими BusinessId
+     *
+     * @param Tweets $tweets
+     *
+     * @return int
+     */
+    private function excludeDuplicates(Tweets $tweets): int
+    {
+        //Текущий размер коллекции
+        $count = $this->tweets->count();
 
-//        try {
-//            $response = new Client('https://twitter.com/i/profiles/show/realDonaldTrump/timeline/tweets');
-////            $response->s
-//
-//                ->get(
-//                'https://twitter.com/i/profiles/show/realDonaldTrump/timeline/tweets?composed_count=0&include_available_features=1&include_entities=1&include_new_items_bar=true&interval=30000&latent_count=0&min_position=1186671140762247168'
-//            );
-//            $response = $response->getBody()->getContents();
-//            $response = json_decode($response, true);
-//            dump($response);
-//        } catch (RequestException $e) {
-//            \Log::channel('sentrylog')->error($e->getMessage());
-//        }
+        /** @var Collection $businessIds Получить записи в БД, по BusinessId (если есть) */
+        $businessIds = $tweets->whereIn('business_id', $this->tweets->pluck('id'))->get('business_id')->pluck('business_id');
+
+        //Удалить записи с повторяющимися BusinessId
+        if ($businessIds->isNotEmpty()) {
+            $this->tweets = $this->tweets->filter(function ($value) use ($businessIds) {
+                return !$businessIds->contains($value['id']);
+            });
+        }
+
+        //Вернуть кол-во удаленных записей
+        return $count - $this->tweets->count();
+    }
+
+    /**
+     * Добавить твиты
+     *
+     * @param Tweets $tweets
+     */
+    private function addTweets(Tweets $tweets): void
+    {
+        $tweetsInsert = $this->tweets->map(function ($item) {
+            return [
+                'business_id'  => $item['id'],
+                'full_url'     => $item['full_url'],
+                'image'        => $item['image'],
+                'body'         => !empty($item['tweet']) ? $item['tweet'] : 'https://twitter.com/marklevinshow/status/' . $item['id'],
+                'published_at' => Carbon::createFromTimestamp($item['published'], date_default_timezone_get())
+                    ->setTimezone('UTC')
+                    ->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        $tweets->insert($tweetsInsert->reverse()->toArray());
     }
 }

@@ -17,3 +17,5 @@ Route::get('/', function () {
 
 Route::get('/news', 'NewsController@getList');
 Route::get('/news/{news}', 'NewsController@getById');
+
+Route::get('/twitter', 'TwitterController@getList');

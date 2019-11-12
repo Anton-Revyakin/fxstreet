@@ -5,17 +5,17 @@ namespace App\Http\Controllers;
 use App\Http\Requests\GetNewsByDate;
 use App\Http\Resources\NewsResource;
 use App\News;
-use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class NewsController extends Controller
 {
     /**
      * Получить список новостей
      *
-     * @param News          $news
      * @param GetNewsByDate $request
+     * @param News          $news
      *
-     * @return string
+     * @return Collection
      */
     public function getList(GetNewsByDate $request, News $news)
     {
@@ -38,10 +38,5 @@ class NewsController extends Controller
     public function getById(News $news)
     {
         return new NewsResource($news);
-    }
-
-    public function search()
-    {
-
     }
 }
