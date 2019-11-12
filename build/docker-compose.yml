@@ -1,0 +1,51 @@
+version: "3.3"
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: home_nginx
+    restart: always
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - /path/to/www:/usr/share/nginx/html
+    ports:
+      - "80:80"
+    networks:
+      - home_net
+    depends_on:
+      - php
+
+  php:
+    image: php:custom
+    container_name: home_php
+    restart: always
+    volumes:
+      - /path/to/www:/var/www/html
+    user: 1000:1000
+    ports:
+      - "9000:9000"
+    networks:
+      - home_net
+    environment:
+      TZ: Europe/Kiev
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql
+    container_name: home_mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    volumes:
+      - ./mysql:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - home_net
+    environment:
+      TZ: Europe/Kiev
+      MYSQL_USER: root
+      MYSQL_ROOT_PASSWORD: mypass
+
+networks:
+  home_net:
+    driver: bridge
