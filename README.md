@@ -2,7 +2,7 @@
 Parse news from FxStreet and Twitter...
 
 ## Build php image with PDO MySQL:
-Go to [./build/dockerfiles/](https://github.com/Anton-Revyakin/fxstreet/tree/master/build) and run `docker build -t php:custom .`
+Go to [./build/dockerfiles/](https://github.com/Anton-Revyakin/fxstreet/tree/master/build/dockerfiles) and run `docker build -t php:custom .`
 
 ## File .env:
 ```dotenv
@@ -15,7 +15,7 @@ DB_USERNAME=root
 DB_PASSWORD=mypass
 
 #Sentry
-SENTRY_LARAVEL_DSN=https://YOUR_HASH@sentry.io/YOU_ID
+SENTRY_LARAVEL_DSN=https://YOUR_HASH@sentry.io/YOUR_ID
 
 #Algolia search
 ALGOLIA_APP_ID=YOUR_APP_ID
