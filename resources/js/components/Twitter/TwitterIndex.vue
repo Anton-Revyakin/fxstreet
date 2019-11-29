@@ -62,7 +62,7 @@
                     <div class="col-9" id="content">
                         <overlay-scrollbars class="height col">
                             <div v-if="Object.keys(tweetBody).length > 0">
-                                <h4 style="margin-top: 16px;">{{ tweetBody.body }}</h4>
+                                <h4 style="margin-top: 16px;" v-html="tweetBody.body"></h4>
                                 <div class="small text-black-50">Ссылка на твит: <a :href="'https://twitter.com' + tweetBody.full_url" target="_blank">https://twitter.com{{ tweetBody.full_url }}</a></div>
                             </div>
                         </overlay-scrollbars>

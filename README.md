@@ -1,4 +1,4 @@
-# FxStreet, Twitter parser
+# FxStreet (with Algolia search), Twitter parser
 Parse news from FxStreet and Twitter...
 
 ## Build php image with PDO MySQL:
@@ -34,11 +34,11 @@ npm install
 ```
 
 ## Migrate DB:
-```php
+```
 artisan migrate
 ```
 
 ## Crontab:
-```bash
+```
 * * * * * $USER docker exec -t home_php php /var/www/html/fxstreet/artisan schedule:run
 ```
